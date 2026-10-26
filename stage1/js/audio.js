@@ -1,0 +1,177 @@
+import { session } from './session.js?v=1';
+
+const bus = {
+  ctx: null,
+  master: null,
+  sfx: null,
+  music: null,
+  unlocked: false,
+  wantMusic: false,
+  musicSrc: null,
+  loop: null,
+};
+
+function ensure() {
+  if (bus.ctx) return true;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return false;
+  try {
+    bus.ctx = new AC();
+    bus.master = bus.ctx.createGain();
+    bus.master.gain.value = session.mute ? 0 : 0.9;
+    bus.master.connect(bus.ctx.destination);
+    bus.sfx = bus.ctx.createGain();
+    bus.sfx.gain.value = 0.85;
+    bus.sfx.connect(bus.master);
+    bus.music = bus.ctx.createGain();
+    bus.music.gain.value = 0.16;
+    bus.music.connect(bus.master);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+export function unlockAudio() {
+  if (!ensure()) return;
+  bus.unlocked = true;
+  if (bus.ctx.state === 'suspended') {
+    bus.ctx.resume();
+  }
+  applyMute();
+  if (bus.wantMusic) startLoop();
+}
+
+export function applyMute() {
+  if (!bus.master) return;
+  bus.master.gain.value = session.mute ? 0 : 0.9;
+}
+
+export function suspendAudio() {
+  if (bus.ctx && bus.ctx.state === 'running') {
+    bus.ctx.suspend();
+  }
+}
+
+export function resumeAudio() {
+  if (bus.unlocked && bus.ctx && bus.ctx.state === 'suspended') {
+    bus.ctx.resume();
+  }
+}
+
+function tone(freq, dur, type, gain, delay, slideTo) {
+  if (!bus.unlocked || !bus.ctx || session.mute) return;
+  const ctx = bus.ctx;
+  const t0 = ctx.currentTime + (delay || 0);
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(Math.max(40, freq), t0);
+  if (slideTo) {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), t0 + dur);
+  }
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(g);
+  g.connect(bus.sfx);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.03);
+}
+
+export function playPlant() {
+  tone(520, 0.09, 'sine', 0.16, 0, 780);
+}
+
+export function playPop(chainIndex) {
+  const freq = Math.min(1400, 380 + chainIndex * 55);
+  tone(freq, 0.08, 'sine', 0.2, 0, freq * 1.25);
+}
+
+export function playTing() {
+  tone(1320, 0.07, 'triangle', 0.1, 0);
+  tone(1980, 0.05, 'sine', 0.05, 0.03);
+}
+
+export function playBumper() {
+  const notes = [523, 659, 784, 1046];
+  for (let i = 0; i < notes.length; i++) tone(notes[i], 0.16, 'triangle', 0.16, i * 0.09);
+}
+
+export function playMega() {
+  const notes = [523, 659, 784, 1046, 1318, 1568];
+  for (let i = 0; i < notes.length; i++) tone(notes[i], 0.18, 'triangle', 0.16, i * 0.08);
+  tone(2093, 0.22, 'sine', 0.08, 0.5);
+}
+
+export function playBuy() {
+  tone(660, 0.1, 'triangle', 0.16, 0);
+  tone(880, 0.14, 'triangle', 0.16, 0.09);
+}
+
+export function playTap() {
+  tone(740, 0.045, 'sine', 0.07, 0);
+}
+
+export function playSeasonEnd() {
+  const notes = [392, 494, 587, 784, 988];
+  for (let i = 0; i < notes.length; i++) tone(notes[i], 0.22, 'sine', 0.14, i * 0.14);
+}
+
+function buildLoop(ctx) {
+  const sr = ctx.sampleRate;
+  const beats = 16;
+  const beat = 60 / 92;
+  const seconds = beats * beat;
+  const len = Math.floor(sr * seconds);
+  const buffer = ctx.createBuffer(1, len, sr);
+  const data = buffer.getChannelData(0);
+  const melody = [262, 330, 392, 330, 294, 370, 330, 262, 392, 494, 440, 392, 330, 294, 262, 294];
+  const bass = [131, 131, 165, 165, 147, 147, 131, 131, 196, 196, 175, 175, 165, 147, 131, 131];
+  for (let i = 0; i < beats; i++) {
+    const start = Math.floor(i * beat * sr);
+    const end = Math.min(len, Math.floor((i + 1) * beat * sr));
+    const f1 = melody[i];
+    const f2 = bass[i];
+    for (let n = start; n < end; n++) {
+      const t = (n - start) / sr;
+      const env = Math.min(1, t * 10) * Math.exp(-t * 2.1);
+      const tt = n / sr;
+      data[n] = Math.sin(2 * Math.PI * f1 * tt) * env * 0.2
+        + Math.sin(2 * Math.PI * f2 * tt) * env * 0.12
+        + Math.sin(2 * Math.PI * f1 * 2 * tt) * env * 0.035;
+    }
+  }
+  const fade = Math.floor(sr * 0.02);
+  for (let i = 0; i < fade; i++) {
+    const k = i / fade;
+    data[i] *= k;
+    data[len - 1 - i] *= k;
+  }
+  return buffer;
+}
+
+function startLoop() {
+  if (!bus.ctx || bus.musicSrc) return;
+  if (!bus.loop) bus.loop = buildLoop(bus.ctx);
+  const src = bus.ctx.createBufferSource();
+  src.buffer = bus.loop;
+  src.loop = true;
+  src.connect(bus.music);
+  src.start();
+  bus.musicSrc = src;
+}
+
+export function startFarmMusic() {
+  bus.wantMusic = true;
+  if (bus.unlocked) startLoop();
+}
+
+export function stopFarmMusic() {
+  bus.wantMusic = false;
+  if (bus.musicSrc) {
+    try { bus.musicSrc.stop(); } catch (err) { /* already stopped */ }
+    try { bus.musicSrc.disconnect(); } catch (err) { /* already disconnected */ }
+    bus.musicSrc = null;
+  }
+}
