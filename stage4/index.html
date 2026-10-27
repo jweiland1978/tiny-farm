@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Tiny Farm, Big Moon</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(#8fd4f5, #fff1c9);
+    touch-action: none;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #game {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    background: transparent;
+    box-sizing: border-box;
+    padding:
+      env(safe-area-inset-top, 0px)
+      env(safe-area-inset-right, 0px)
+      env(safe-area-inset-bottom, 0px)
+      env(safe-area-inset-left, 0px);
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+  #stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+  #bgart {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    touch-action: none;
+  }
+  canvas {
+    touch-action: none !important;
+    -webkit-touch-callout: none;
+  }
+  #codepanel, #codepanel textarea {
+    touch-action: auto;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+</style>
+<script>
+  (function () {
+    function block(e) {
+      const t = e.target;
+      if (t && t.closest && t.closest('#codepanel')) return;
+      e.preventDefault();
+    }
+    document.addEventListener('touchmove', block, { passive: false });
+    document.addEventListener('gesturestart', block, { passive: false });
+    document.addEventListener('gesturechange', block, { passive: false });
+    document.addEventListener('gestureend', block, { passive: false });
+    document.addEventListener('touchstart', function (e) {
+      if (e.touches && e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('contextmenu', block);
+    document.addEventListener('dblclick', block);
+  })();
+</script>
+</head>
+<body>
+<div id="game"><div id="stage"></div></div>
+<canvas id="bgart"></canvas>
+<script src="lib/phaser.min.js?v=1"></script>
+<script type="module" src="js/main.js?v=1"></script>
+</body>
+</html>
